@@ -6,7 +6,7 @@ var Iconv = require('iconv').Iconv;
 var iconv = new Iconv('UTF-8', 'ISO-8859-1//TRANSLIT//IGNORE');
 var path = require('path');
 
-var language = 'pt';
+var language = 'en';
 var DEFAULT_AUTHOR_ID = 1;
 
 var PROP_MAP = {
