@@ -5,6 +5,7 @@
     "mysql": "*",
     "async": "*",
     "iconv": "*",
-    "slug": "*"
+    "slug": "*",
+    "gm": "*"
   }
 }
