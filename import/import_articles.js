@@ -7,7 +7,26 @@ var iconv = new Iconv('UTF-8', 'ISO-8859-1//TRANSLIT//IGNORE');
 var path = require('path');
 
 var language = 'pt';
-DEFAULT_AUTHOR_ID = 1;
+var DEFAULT_AUTHOR_ID = 1;
+
+var PROP_MAP = {
+  'Contacts': {pt: 'Contactos'},
+  'Prices': { pt: 'Preços' },
+  'Prices': { pt: 'Preços' },
+  'Programs': { pt: 'Programas'},
+  'Conditions': { pt: 'Condições'},
+  'Facilities': {pt: 'Facilidades'},
+  'Indications': {pt: 'Indicações'},
+  'Information': {pt: 'Informação'},
+  'Dangers': {pt: 'Perigos'},
+  'Duration': {pt: 'Duração'},
+  'End Point': {pt: 'Pto de Chegada'},
+  'Equipment': {pt: 'Equipamento'},
+  'Length': { pt: 'Comprimento'},
+  'Observations': { pt: 'Observações'},
+  'Start Point': { pt: 'Pto de Partida'},
+  'Transportation': { pt: 'Transporte'}
+}
 
 var db = mysql.createClient({
   user: "root",
@@ -20,7 +39,18 @@ var wpdb = mysql.createClient({
 });
 
 function articleContent(article) {
-  return article.body + ' [gallery]';
+  var body = article.body;
+  var value;
+  
+  for(var prop in article) {
+    if (prop in PROP_MAP) {
+      value = article[prop];
+      if (value) {
+        body += '\n<p><label>' + (PROP_MAP[prop][language] || prop) + '</label>: ' + value + '</p>\n';
+      }
+    }
+  }
+  return body + ' [gallery]';
 }
 
 function getExtension(type) {
@@ -294,7 +324,8 @@ function insertArticle(article, done) {
   // });
   // return;
   
-  console.log('going to insert %d articles', articles.length);
+  console.log('going to insert %d articles', articles.length, articles);
+  //return;
   async.forEach(articles, function(article, next) {
     insertArticle(article, function(err) {
       if (err) { return next(err);}
