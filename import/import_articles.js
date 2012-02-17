@@ -4,6 +4,7 @@ var async = require('async');
 var slug = require('slug');
 var Iconv = require('iconv').Iconv;
 var iconv = new Iconv('UTF-8', 'ISO-8859-1//TRANSLIT//IGNORE');
+var path = require('path');
 
 var language = 'pt';
 DEFAULT_AUTHOR_ID = 1;
@@ -19,36 +20,89 @@ var wpdb = mysql.createClient({
 });
 
 function articleContent(article) {
-  return article.body;
+  return article.body + ' [gallery]';
+}
+
+function getExtension(type) {
+  switch(type) {
+    case 'image/jpeg':
+    case 'image/pjpeg':
+      return '.jpg';
+    default:
+      return '.bin'
+  }
+}
+
+function convertFileName(fileName) {
+  if (! fileName) { return '';}
+  return iconv.convert(fileName).toString().replace(/ /g, '_');
+}
+
+function canonicalImagePath(file) {
+  var fileName = convertFileName(file.name);
+  var extension = path.extname(fileName) || getExtension(file.type);
+  return file.id + '-' + path.basename(fileName) + extension;
+}
+
+function resizedImagePath(file, width, height) {
+  var fileName = convertFileName(file.name);
+  var extension = path.extname(fileName) || getExtension(file.type);
+  return file.id + '-' + path.basename(fileName) + '-' + width + 'x' + height + extension;
 }
 
 function generateMetadata(file) {
-  return 'a:6:{s:5:"width";s:3:"612";s:6:"height";s:3:"612";s:14:"hwstring_small";s:22:"height='96' width='96'";s:4:"file";s:46:"' + file + '";s:5:"sizes";a:5:{s:9:"thumbnail";a:3:{s:4:"file";s:46:"8f4cd690348711e19e4a12313813ffc0_7-150x150.jpg";s:5:"width";s:3:"150";s:6:"height";s:3:"150";}s:6:"medium";a:3:{s:4:"file";s:46:"8f4cd690348711e19e4a12313813ffc0_7-300x300.jpg";s:5:"width";s:3:"300";s:6:"height";s:3:"300";}s:14:"post-thumbnail";a:3:{s:4:"file";s:46:"8f4cd690348711e19e4a12313813ffc0_7-612x288.jpg";s:5:"width";s:3:"612";s:6:"height";s:3:"288";}s:13:"large-feature";a:3:{s:4:"file";s:46:"8f4cd690348711e19e4a12313813ffc0_7-612x288.jpg";s:5:"width";s:3:"612";s:6:"height";s:3:"288";}s:13:"small-feature";a:3:{s:4:"file";s:46:"8f4cd690348711e19e4a12313813ffc0_7-300x300.jpg";s:5:"width";s:3:"300";s:6:"height";s:3:"300";}}s:10:"image_meta";a:10:{s:8:"aperture";s:1:"0";s:6:"credit";s:0:"";s:6:"camera";s:0:"";s:7:"caption";s:0:"";s:17:"created_timestamp";s:1:"0";s:9:"copyright";s:0:"";s:12:"focal_length";s:1:"0";s:3:"iso";s:1:"0";s:13:"shutter_speed";s:1:"0";s:5:"title";s:0:"";}}'
+  console.log('generate meta data for ', file);
+  return 'a:6:{s:5:"width";s:3:"612";s:6:"height";s:3:"612";s:14:"hwstring_small";s:22:"height=\'96\' width=\'96\'";s:4:"file";s:46:"' + canonicalImagePath(file) +
+  '";s:5:"sizes";a:5:{s:9:"thumbnail";a:3:{s:4:"file";s:46:"'+resizedImagePath(file, 150, 150)+
+  '";s:5:"width";s:3:"150";s:6:"height";s:3:"150";}s:6:"medium";a:3:{s:4:"file";s:46:"'+resizedImagePath(file, 300, 300) +
+  '";s:5:"width";s:3:"300";s:6:"height";s:3:"300";}s:14:"post-thumbnail";a:3:{s:4:"file";s:46:"' + resizedImagePath(file, 612, 288) +
+  '";s:5:"width";s:3:"612";s:6:"height";s:3:"288";}s:13:"large-feature";a:3:{s:4:"file";s:46:"' + resizedImagePath(file, 612, 288) +
+  '";s:5:"width";s:3:"612";s:6:"height";s:3:"288";}s:13:"small-feature";a:3:{s:4:"file";s:46:"'+ resizedImagePath(file, 300, 300) +
+  '";s:5:"width";s:3:"300";s:6:"height";s:3:"300";}}s:10:"image_meta";a:10:{s:8:"aperture";s:1:"0";s:6:"credit";s:0:"";s:6:"camera";s:0:"";s:7:"caption";s:0:"";s:17:"created_timestamp";s:1:"0";s:9:"copyright";s:0:"";s:12:"focal_length";s:1:"0";s:3:"iso";s:1:"0";s:13:"shutter_speed";s:1:"0";s:5:"title";s:0:"";}}'
 }
 
-function insertArticleImages(article, next) {
-  async.forEach(article.images, function(image, next) {
-    console.log('image:', image);
-    return;
+function insertArticleImage(article, image, next) {
+  wpdb.query([
+    "INSERT INTO wp_posts (post_author, post_date, post_date_gmt, post_content, post_title, post_excerpt, post_status, comment_status, ping_status, post_name, post_modified, post_modified_gmt, post_parent, post_mime_type, post_type, comment_count)",
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ].join(' '), [DEFAULT_AUTHOR_ID, article.created, article.created, '', canonicalImagePath(image) , '', 'inherit', 'closed', 'open', canonicalImagePath(image), article.modified, article.modified, article.wp_post_id, image.type, 'attachment', 0], function(err, res) {
+    if (err) { return next(err); }
+    var imagePostId = res.insertId;
     wpdb.query([
-      "INSERT INTO wp_posts (post_author, post_date, post_date_gmt, post_content, post_title, post_excerpt, post_status, comment_status, ping_status, post_name, post_modified, post_modified_gmt, post_parent, post_type, comment_count)",
-      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-    ].join(' '), [DEFAULT_AUTHOR_ID, article.created, article.created, '', image , '', 'inherit', 'closed', 'open', image, article.modified, article.modified, article.wp_post_id, 'attachment', 0], function(err, res) {
+      "INSERT INTO wp_postmeta(post_id, meta_key, meta_value)",
+      "VALUES (?, ?, ?)"
+    ].join(' '), [res.insertId, '_wp_attached_file', canonicalImagePath(image)], function(err) {
       if (err) { return next(err); }
       wpdb.query([
         "INSERT INTO wp_postmeta(post_id, meta_key, meta_value)",
         "VALUES (?, ?, ?)"
-      ].join(' '), [article.wp_post_id, '_wp_attached_file', image], function(err) {
+      ].join(' '), [article.wp_post_id, '_wp_attachment_metadata', generateMetadata(image)], function(err) {
         if (err) { return next(err); }
-        wpdb.query([
-          "INSERT INTO wp_postmeta(post_id, meta_key, meta_value)",
-          "VALUES (?, ?, ?)"
-        ].join(' '), [article.wp_post_id, '_wp_attachment_metadata', image], function(err) {
-        
+        return next(null, imagePostId);
       });
+      
     });
   });
-  
+}
+
+function insertArticleImages(article, next) {
+  console.log('going to insert article images');
+  async.forEach(article.images || [], function(image, next) {
+    console.log('image:', image);
+    return insertArticleImage(article, image, next);
+  }, next);
+}
+
+function insertArticleMainImage(article, next) {
+  if (article.mainImage) {
+    insertArticleImage(article, article.mainImage, function(err, imagePostId) {
+      if (err) { return next(err); }
+      wpdb.query(['INSERT INTO wp_postmeta (post_id, meta_key, meta_value) VALUES(?, ?, ?)'].join(' '),
+      [article.wp_post_id, '_thumbnail_id', imagePostId], next);
+    });
+  } else {
+    return next();
+  }
 }
 
 function insertArticle(article, done) {
@@ -62,24 +116,29 @@ function insertArticle(article, done) {
     
     article.wp_post_id = postId;
     
-    
-    if (! article.themes.length) { return done(); }
-    
-    async.forEach(article.themes, function(theme, next) {
-      wpdb.query([
-        "INSERT INTO wp_term_relationships(object_id, term_taxonomy_id, term_order)",
-        "VALUES (?, ?, ?)"
-      ].join(' '), [postId, theme.id, 0], function(err) {
-        if (err) { return next(err); }
-        wpdb.query([
-          "UPDATE wp_term_taxonomy",
-          "SET count = count + 1",
-          "WHERE term_taxonomy_id = ?"
-        ].join(' '), [theme.id], next);
+    insertArticleMainImage(article, function(err) {
+      if (err) { return done(err); }
+      insertArticleImages(article, function(err) {
+        if (err) { return done(err); }
+
+        if (! article.themes.length) { return done(); }
+
+        async.forEach(article.themes, function(theme, next) {
+          wpdb.query([
+            "INSERT INTO wp_term_relationships(object_id, term_taxonomy_id, term_order)",
+            "VALUES (?, ?, ?)"
+          ].join(' '), [postId, theme.id, 0], function(err) {
+            if (err) { return next(err); }
+            wpdb.query([
+              "UPDATE wp_term_taxonomy",
+              "SET count = count + 1",
+              "WHERE term_taxonomy_id = ?"
+            ].join(' '), [theme.id], next);
+          });
+
+        }, done);
       });
-      
-    }, done);
-    
+    });
   });
 }
 
@@ -151,39 +210,28 @@ function insertArticle(article, done) {
     });
   }
   
-  function getExtension(type) {
-    switch(type) {
-      case 'image/jpeg':
-      case 'image/pjpeg':
-        return 'jpg';
-      default:
-        return 'bin'
-    }
-  }
-  
   function getArticleImages(article, next) {
     
     function getMainImage(article, next) {
       if (! article.overview_image_file_id) { return next(); }
       db.query([
-        "SELECT act2_media_files.id, act2_media_files.type",
-        "FROM act2_gallery_images, act2_media_files",
-        "WHERE act2_gallery_images.id = ?",
-      ].join(' '), [article.image_gallery_id], function(err, file) {
+        "SELECT act2_media_files.id, act2_media_files.type, act2_media_files.name",
+        "FROM act2_media_files",
+        "WHERE act2_media_files.id = ?",
+      ].join(' '), [article.overview_image_file_id], function(err, file) {
         if (err) { return next(err); }
         if (Array.isArray(file)) { file = file[0]; };
         if (! file) { return next(); }
-        var extension = getExtension(file.type);
-        var filePath = file.id + '.' + extension;
-        article.mainImage = filePath;
-        return next(null);
+        article.mainImage = file;
+        console.log('main image:', file);
+        return next();
       });
     }
     
     function getGalleryImages(article, next) {
       if (! article.image_gallery_id) { return next(); }
       db.query([
-        "SELECT act2_media_files.id, act2_media_files.type",
+        "SELECT act2_media_files.id, act2_media_files.type, act2_media_files.name",
         "FROM act2_gallery_images, act2_media_files",
         "WHERE act2_gallery_images.gallery_id = ?",
         "AND act2_gallery_images.image_file_id = act2_media_files.id"
@@ -191,10 +239,9 @@ function insertArticle(article, done) {
         if (err) { return next(err); }
         if (! Array.isArray(res)) { res = [res]; }
         async.forEach(res, function(image, next) {
-          var extension = getExtension(image.type);
-          var filePath = image.id + '.' + extension;
           if (! article.images) { article.images = []};
-          article.images.push(filePath);
+          article.images.push(image);
+          console.log('images for article id %d, %j', article.id, image);
           next();
         }, next);
       });
@@ -241,11 +288,11 @@ function insertArticle(article, done) {
   if (err) { throw err; }
   db.end();
   var inserted = 0;
-  insertArticle(articles[0], function(err) {
-    if (err) { throw err; }
-    console.log('done');
-  });
-  return;
+  // insertArticle(articles.filter(function(a) { return a.id === 6; })[0], function(err) {
+  //   if (err) { throw err; }
+  //   console.log('done');
+  // });
+  // return;
   
   console.log('going to insert %d articles', articles.length);
   async.forEach(articles, function(article, next) {
